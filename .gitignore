@@ -219,3 +219,17 @@ __marimo__/
 
 # Local data files
 prophet/demand_supply_forecast_2W.csv
+
+# PyTorch Lightning / NeuralProphet training artifacts
+lightning_logs/
+**/lightning_logs/
+.lr_find*.ckpt
+**/.lr_find*.ckpt
+checkpoints/
+**/checkpoints/
+logs/
+tensorboard/
+tb_logs/
+runs/
+events.out.tfevents.*
+events.out.tfevents.*.*
