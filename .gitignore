@@ -217,6 +217,10 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Dataset directories — ignore cached downloads, keep folder via .gitkeep
+**/data/**
+!**/data/.gitkeep
+
 # Local data files
 prophet/demand_supply_forecast_2W.csv
 
