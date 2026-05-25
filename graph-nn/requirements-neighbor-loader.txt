@@ -1,0 +1,6 @@
+# NeighborLoader on macOS (Apple Silicon, CPU). PyG wheels must match torch exactly.
+# Install from graph-nn/ or repo root:
+#   pip install -r graph-nn/requirements-neighbor-loader.txt -f https://data.pyg.org/whl/torch-2.5.1+cpu.html
+torch==2.5.1
+torch-scatter
+torch-sparse
