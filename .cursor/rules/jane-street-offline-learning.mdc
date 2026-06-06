@@ -1,0 +1,14 @@
+---
+description: Jane Street market forecasting offline learning scope
+globs: jane-street-market-forecasting/**
+alwaysApply: false
+---
+
+# Jane Street Market Forecasting Scope
+
+This folder is purely an offline learning example.
+
+When working in `jane-street-market-forecasting/`:
+- Do not optimize for or design around online Kaggle submission.
+- Do not add online inference server, submission API, or competition deployment code unless explicitly requested.
+- Prefer local experimentation, EDA, reproducible notebooks, and offline validation.
