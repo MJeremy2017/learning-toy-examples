@@ -1,0 +1,15 @@
+{
+  "id": "zhangyue199/train-lstm-baseline",
+  "title": "train_lstm_baseline",
+  "code_file": "train_lstm_baseline.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "competition_sources": [
+    "jane-street-real-time-market-data-forecasting"
+  ],
+  "dataset_sources": [],
+  "kernel_sources": []
+}
