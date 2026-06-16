@@ -5,71 +5,75 @@ description: Diagnose and tune neural network training using the loss/metric cur
 
 # Neural Network Tuning
 
-Tune by reading the training signals first, then change ONE knob per run so each result is interpretable. The model is usually not "broken" — the curves tell you which lever to pull.
+Read the training curves first, then change ONE knob per run so each result is interpretable. The curves tell you which lever to pull.
 
 ## Workflow
 
 ```
-- [ ] 1. Make the measurement trustworthy (full data, fixed seed, right metric)
-- [ ] 2. Read the dashboard (train vs val curve, trajectory, stopping epoch, stability)
-- [ ] 3. Diagnose: overfit / underfit / undertrained / unstable
+- [ ] 1. Trust the measurement (full data, fixed seed, right metric, chronological val for time series)
+- [ ] 2. Read the curves (gap, trajectory, stopping epoch, stability)
+- [ ] 3. Diagnose with the decision tree
 - [ ] 4. Change ONE knob, re-run, log (change, val_metric, best_epoch)
 - [ ] 5. Repeat in the tuning order below
 ```
 
 ## Step 1: Trust the measurement first
 
-Before tuning anything, confirm:
-- Training on the **full dataset**, not a smoke-test/dev subset (check sample counts).
-- A **fixed seed** so run-to-run differences come from the change, not noise.
-- Tracking the **same metric you ultimately care about** (and the same one as any baseline you compare against). Know the metric's natural scale — some metrics are tiny by nature, so small gains can be real.
-- A held-out **validation/OOF split** that matches the real evaluation (for time series, chronological — never shuffle across time).
+- **Full dataset**, not a smoke-test subset (check sample counts).
+- **Fixed seed** so run-to-run differences come from the change, not noise.
+- Track the **metric you actually care about** (same as any baseline you compare to).
+- Held-out **val/OOF split that matches real evaluation** — for time series, chronological, never shuffled across time.
 
-## Step 2: The dashboard
+## Step 2: Diagnose (gap first, then the train level / trajectory)
 
-Read four things from per-epoch logs and the run summary:
+Judge "good vs. mediocre" against a baseline or known ceiling, **not** against zero — in low-signal domains (e.g. finance) small numbers can still be good.
 
-1. **Gap** = train_metric − val_metric → overfit vs underfit.
-2. **Val trajectory** → still improving, plateaued, or diverging?
-3. **Stopping epoch vs max epochs** → early-stopped, or ran out of budget?
-4. **Stability** → loss NaN/exploding, or metric bouncing run-to-run?
+```
+Big gap (train ≫ val)?
+├─ Train fits well (near ceiling)  → Overfitting        → ↓ capacity, ↑ regularization, more data
+└─ Train mediocre                  → Low signal / shift → better/more-stationary features + more data; keep capacity
+Small gap (train ≈ val)?
+├─ Both still improving            → Healthy/undertrained → train longer (↑ epochs/patience)
+└─ Both plateaued at a poor level  → Underfitting        → ↑ capacity, ↓ regularization, fix LR/inputs
+```
 
-## Step 3: Symptom -> diagnosis -> change
+Key nuances:
+- A gap alone does **not** mean "too big." Underfitting is the *plateau* (train stops improving), not just "both look low."
+- Both curves still **decreasing in sync** = healthy/undertrained → just train longer. Not underfitting.
+- **Guiding principle:** set capacity from the train curve; close the gap with regularization/data. Shrinking caps achievable performance — prefer soft regularizers (dropout, weight decay, early stopping, more data, auxiliary targets). Only shrink when train is strong and val lags; only grow when train is weak and val still has headroom.
 
-| What you see | Diagnosis | Change |
+Instability cases (outside the gap tree):
+
+| What you see | Likely cause | Fix |
 |---|---|---|
-| train ≫ val; val peaks early then drops | Overfitting | ↑ dropout, ↑ weight decay, ↓ width/depth, more data/augmentation, keep early stopping |
-| train and val both low and close | Underfitting | ↑ width, ↑ depth, ↑ input context (e.g. sequence length), train longer, ↓ regularization |
-| best epoch == max epochs, val still rising | Undertrained | ↑ max epochs, ↑ patience |
-| best epoch 1-2 then stops | LR too high / fast overfit | ↓ LR, add LR scheduler |
-| loss NaN / bounces / metric unstable | LR too high or inputs unscaled | ↓ LR, standardize inputs, add grad clipping (max_norm ~1.0) |
-| val worse than trivial baseline | Scale/LR bug or too-short training | fix normalization + LR first, then re-evaluate |
+| loss NaN / bounces / unstable | LR too high or inputs unscaled | ↓ LR, standardize inputs, grad clip (max_norm ~1.0) |
+| best epoch 1–2 then stops | LR too high / fast overfit | ↓ LR, add LR scheduler |
+| val worse than trivial baseline | scale/LR bug or too-short training | fix normalization + LR first, then re-evaluate |
 
-## Step 4: Tuning order (one knob at a time)
+## Step 3: Tuning order (one knob at a time)
 
-1. **Learning rate** — the single most important knob. Sweep by factors of ~3 (e.g. 3e-4, 1e-3, 3e-3). Pair with a scheduler (ReduceLROnPlateau or cosine).
-2. **Model capacity** — width (hidden size) first, then depth (layers). Scale up only while val keeps improving.
-3. **Architecture-specific context** — e.g. sequence length for RNNs/Transformers, kernel size/receptive field for CNNs.
+1. **Learning rate** — most important. Sweep by ~3x (3e-4, 1e-3, 3e-3) + a scheduler (ReduceLROnPlateau/cosine).
+2. **Capacity** — width (hidden size) first, then depth. Scale up only while val keeps improving.
+3. **Context** — sequence length for RNNs/Transformers, receptive field for CNNs.
 4. **Regularization** — dropout, weight decay. Add only to close an overfitting gap you actually observe.
-5. **Batch size** — mostly a speed/memory knob, not a quality knob. If you raise it a lot, raise LR roughly proportionally.
+5. **Batch size** — a speed/memory knob, not a quality knob. Raise it a lot → raise LR roughly proportionally.
 
-Keep a small log per run: `(change, val_metric, best_epoch, notes)`.
+Keep a per-run log: `(change, val_metric, best_epoch, notes)`.
 
 ## High-impact items people forget
 
-- **Input normalization**: standardize features using **train-split statistics only**, then apply to val/test. Critical for NNs (unlike trees, which are scale-invariant). Often the biggest single stability/quality win.
-- **LR schedule + warmup**: a fixed LR leaves performance on the table; decay when val stalls.
-- **Early stopping + restore best weights**: stop on the val metric, keep the best checkpoint.
-- **Gradient clipping**: stabilizes RNNs/Transformers (max_norm ~1.0).
-- **Target/output handling**: clip or transform targets to a sane range; match the loss to the objective and any sample weighting.
-- **Seed control**: seed Python/NumPy/framework RNGs to make comparisons valid.
+- **Input normalization** with **train-split stats only** — often the biggest single quality/stability win for NNs.
+- **LR schedule** — decay when val stalls; a fixed LR leaves performance on the table.
+- **Early stopping + restore best weights** — stop on the val metric, keep the best checkpoint.
+- **Gradient clipping** (max_norm ~1.0) — stabilizes RNNs/Transformers.
+- **Match the loss to the objective** and any sample weighting; clip/transform targets to a sane range.
+- **Seed** Python/NumPy/framework RNGs so comparisons are valid.
 
 ## Architecture change guidance
 
-- Add **depth/width** only when a smaller model clearly underfits with headroom on the val curve.
+- Add **depth/width** only when a smaller model underfits the **train** set *and* val still has headroom. A gap with mediocre train is not a reason to add capacity — fix inputs/regularization first.
 - For sequences, **never use bidirectional/future context in forecasting** — it leaks the target.
-- Prefer a **cheaper variant first** (e.g. GRU vs LSTM) as a speed experiment once context length is set.
-- Escalate complexity (attention/Transformer, residual blocks, normalization layers) only after exhausting cheaper tuning.
+- Prefer a **cheaper variant first** (e.g. GRU vs LSTM) once context length is set.
 - Change architecture **after** LR, normalization, and capacity are dialed in — not before.
 
 ## Anti-patterns
